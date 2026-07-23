@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地域非遗文脉RAG智能创作平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'heritage': {
+                            'cream': '#FDF6E3',
+                            'ochre': '#C75C2C',
+                            'teal': '#2B6E6E',
+                            'dark': '#2D2D2D',
+                            'gold': '#D4A843',
+                            'brown': '#8B4513',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans SC', sans-serif; background: linear-gradient(135deg, #FDF6E3 0%, #FFF5E6 50%, #F5E6D3 100%); min-height: 100vh; }
+        .font-serif { font-family: 'Noto Serif SC', serif; }
+        .card-heritage { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border: 1px solid rgba(199,92,44,0.1); transition: all 0.3s; }
+        .card-heritage:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+        .btn-heritage { background: linear-gradient(135deg, #C75C2C 0%, #D4A843 100%); color: white; transition: all 0.3s; }
+        .btn-heritage:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(199,92,44,0.4); }
+        .btn-heritage:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-outline { border: 2px solid #C75C2C; color: #C75C2C; background: white; transition: all 0.3s; }
+        .btn-outline:hover { background: rgba(199,92,44,0.08); }
+        .tab-active { background: linear-gradient(135deg, #C75C2C 0%, #D4A843 100%); color: white; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .loading-spinner { border: 3px solid #f3f3f3; border-top: 3px solid #C75C2C; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 500; z-index: 9999; animation: fadeInOut 3s ease-in-out; }
+        .toast-success { background: #10B981; }
+        .toast-error { background: #EF4444; }
+        .toast-info { background: #3B82F6; }
+        @keyframes fadeInOut { 0% { opacity: 0; transform: translateX(-50%) translateY(-20px); } 10% { opacity: 1; transform: translateX(-50%) translateY(0); } 90% { opacity: 1; } 100% { opacity: 0; } }
+        .network-warning { background: linear-gradient(90deg, #FEF3C7, #FDE68A); border-bottom: 2px solid #F59E0B; padding: 10px; text-align: center; color: #92400E; font-size: 14px; }
+        .drop-zone { border: 2px dashed #C75C2C; border-radius: 12px; padding: 40px; text-align: center; transition: all 0.3s; background: rgba(199,92,44,0.02); }
+        .drop-zone.dragover { border-color: #2B6E6E; background: rgba(43,110,110,0.05); }
+        .modal-overlay { background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+        .template-btn { transition: all 0.2s; }
+        .template-btn.selected { border-color: #C75C2C; background: rgba(199,92,44,0.05); }
+        input[type="range"] { -webkit-appearance: none; height: 6px; border-radius: 3px; background: #e5e7eb; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #C75C2C, #D4A843); cursor: pointer; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #C75C2C; border-radius: 3px; }
+        .pattern-card { position: relative; overflow: hidden; border-radius: 12px; }
+        .pattern-card img { transition: transform 0.3s; width: 100%; border-radius: 12px; }
+        .pattern-card:hover img { transform: scale(1.03); }
+        .pattern-card .overlay { position: absolute; top: 0; right: 0; padding: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.3s; }
+        .pattern-card:hover .overlay { opacity: 1; }
+        .stat-card { padding: 12px; border-radius: 10px; }
+        @media (max-width: 1024px) { .tab-panel.active { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="networkWarning" class="network-warning hidden">⚠ 网络不可用，云端模型与Agnes生图功能暂不可用</div>
+    <div id="toastContainer"></div>
+
+    <!-- 顶部导航栏 -->
+    <header class="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-heritage-ochre to-heritage-gold rounded-full flex items-center justify-center shadow-lg">
+                    <span class="text-white font-serif font-bold text-lg">遗</span>
+                </div>
+                <div>
+                    <h1 class="font-serif font-bold text-heritage-dark text-lg">地域非遗文脉RAG智能创作平台</h1>
+                    <p class="text-xs text-gray-500">非物质文化遗产智能创作辅助系统 · 四层推理架构</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-2 text-sm">
+                    <span class="text-gray-500">当前模型：</span>
+                    <span id="currentModel" class="font-medium text-heritage-teal">本地 DeepSeek 蒸馏轻量模型</span>
+                    <span id="modelStatusDot" class="w-2 h-2 rounded-full bg-green-500"></span>
+                </div>
+                <div class="text-sm text-gray-500">
+                    <span>Token消耗：</span><span id="tokenCount" class="font-medium">0</span>
+                    <span id="tokenNote" class="text-xs text-green-600 ml-1">（本地推理，不消耗API额度）</span>
+                </div>
+                <button onclick="showModal('modelSwitchModal')" class="btn-heritage px-4 py-2 rounded-lg text-sm font-medium">切换模型</button>
+                <div class="relative">
+                    <button onclick="toggleDropdown()" class="p-2 rounded-lg hover:bg-gray-100">
+                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
+                    </button>
+                    <div id="dropdownMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-50">
+                        <a href="#" onclick="showModal('techDocModal');hideDropdown()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">项目技术说明</a>
+                        <a href="#" onclick="exportLogs();hideDropdown()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">导出运行日志</a>
+                        <a href="#" onclick="showModal('guideModal');hideDropdown()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">操作指引</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="max-w-7xl mx-auto px-6 py-6 w-full">
+        <!-- 导航Tab -->
+        <div class="flex space-x-2 mb-6">
+            <button onclick="switchTab('chat')" id="tab-chat" class="px-5 py-2 rounded-lg font-medium tab-active transition-all text-sm">非遗智能问答</button>
+            <button onclick="switchTab('pattern')" id="tab-pattern" class="px-5 py-2 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 transition-all text-sm">传统纹样生成</button>
+            <button onclick="switchTab('content')" id="tab-content" class="px-5 py-2 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 transition-all text-sm">文创内容生成</button>
+            <button onclick="switchTab('kb')" id="tab-kb" class="px-5 py-2 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 transition-all text-sm">知识库管理</button>
+        </div>
+
+        <!-- ====== 页面1：非遗智能问答 ====== -->
+        <div id="panel-chat" class="tab-panel active">
+            <!-- 左：智能问答 -->
+            <div class="card-heritage p-6 flex flex-col">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">智能问答</h2>
+                <textarea id="chatInput" class="w-full h-32 p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre resize-none text-sm" placeholder="请输入关于非遗文化的问题（例：湘绣传统针法有哪些？）"></textarea>
+                <div class="flex justify-between items-center mt-3">
+                    <span class="text-sm text-gray-500"><span id="charCount">0</span>/800字</span>
+                    <button onclick="sendChat()" class="btn-heritage px-6 py-2 rounded-lg font-medium text-sm" id="btnSendChat">发送提问</button>
+                </div>
+                <!-- 检索参数 -->
+                <details class="mt-4 text-sm">
+                    <summary class="cursor-pointer text-heritage-teal font-medium">检索参数调节</summary>
+                    <div class="mt-3 space-y-4 p-4 bg-gray-50 rounded-lg">
+                        <div>
+                            <label class="block text-gray-600 mb-1">工艺分类加权权重</label>
+                            <input type="range" id="paramCategoryWeight" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1"><span>低</span><span id="catWeightVal">0.5</span><span>高</span></div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 mb-1">相似度阈值</label>
+                            <input type="range" id="paramThreshold" min="0" max="1" step="0.05" value="0.1" class="w-full">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1"><span>宽松</span><span id="thresholdVal">0.1</span><span>严格</span></div>
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 mb-1">返回检索片段数量</label>
+                            <input type="range" id="paramTopK" min="1" max="10" value="5" class="w-full">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1"><span>1</span><span id="topKVal">5</span><span>10</span></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+            <!-- 右：回答结果 -->
+            <div class="card-heritage p-6 flex flex-col">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">回答结果</h2>
+                <div id="chatLoading" class="hidden flex items-center justify-center py-8">
+                    <div class="loading-spinner mr-3"></div>
+                    <span class="text-gray-500">AI思考中...</span>
+                </div>
+                <div id="chatOutput" class="prose prose-sm max-w-none text-gray-700 flex-1 min-h-[120px] max-h-[500px] overflow-y-auto">
+                    <p class="text-gray-400">匹配史料与AI回答将展示在此处</p>
+                </div>
+                <div id="chatNoResult" class="hidden mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                    <p class="text-amber-700 text-sm mb-2">知识库中未找到相关史料</p>
+                    <button onclick="switchTab('kb')" class="text-sm text-heritage-teal hover:underline font-medium">前往知识库补充素材 →</button>
+                </div>
+                <div id="chatSources" class="hidden mt-4 p-3 bg-gray-50 rounded-lg">
+                    <h3 class="font-medium text-heritage-dark text-sm mb-2">参考来源</h3>
+                    <div id="sourcesList" class="text-xs text-gray-600 space-y-1"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== 页面2：传统纹样生成 ====== -->
+        <div id="panel-pattern" class="tab-panel">
+            <!-- 左：参数配置 -->
+            <div class="card-heritage p-6">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">纹样参数配置</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">非遗品类</label>
+                        <select id="patternCategory" class="w-full p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre text-sm">
+                            <option value="皮影">皮影戏</option><option value="剪纸">剪纸艺术</option><option value="苏绣">苏绣刺绣</option>
+                            <option value="湘绣">湘绣刺绣</option><option value="木雕">木雕工艺</option><option value="竹编">竹编工艺</option><option value="年画">年画艺术</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">风格预设</label>
+                        <select id="patternStylePreset" class="w-full p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre text-sm mb-2" onchange="applyStylePreset()">
+                            <option value="">-- 选择预设风格 --</option>
+                            <option value="vintage antique style, muted earthy tones of ochre indigo and sienna, fine brushwork lines, traditional Chinese painting aesthetics, weathered aged patina effect">传统古朴</option>
+                            <option value="modern minimalist style, geometric patterns fused with traditional elements, clean crisp lines, fresh bright colors, ample white space, contemporary Eastern aesthetic">现代简约</option>
+                            <option value="imperial palace luxurious style, magnificent golden and crimson splendor, rich saturated jewel tones, elaborate ornate dragon phoenix motifs, regal majestic grandeur">宫廷华丽</option>
+                            <option value="folk art rustic style, innocent playful childlike charm, bold vivid contrasting colors, strong red and green, paper-cut like openwork technique, naive folk artistic expression">民间质朴</option>
+                            <option value="ink wash painting style, expansive white negative space creating ethereal mood, rich ink tone gradations from light to dark, flowing brushwork like drifting clouds and running water, poetic and transcendent">水墨写意</option>
+                            <option value="zen minimalist style, extreme sparse composition with generous white space, subdued灰白beige color palette, simple flowing lines like dry landscape garden, deep tranquil meditative atmosphere">禅意空灵</option>
+                            <option value="festive celebration style, vibrant red and gold dominant palette, peony lotus and plum blossom auspicious florals, lantern and firecracker elements, full dense composition, joyous New Year atmosphere">节日喜庆</option>
+                            <option value="custom">自定义风格...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">风格描述</label>
+                        <textarea id="patternStyle" class="w-full h-20 p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre resize-none text-sm" placeholder="如：传统神话故事场景，线条流畅细腻，色彩古朴典雅"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">图片尺寸</label>
+                        <select id="patternSize" class="w-full p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre text-sm">
+                            <option value="1024x1024">1024×1024（正方形）</option><option value="1024x768">1024×768（横版）</option><option value="768x1024">768×1024（竖版）</option>
+                        </select>
+                    </div>
+                    <button onclick="generatePattern()" id="btnGenPattern" class="w-full btn-heritage px-6 py-3 rounded-lg font-medium text-sm">一键生成非遗纹样图</button>
+                    <p class="text-xs text-gray-500 text-center">使用 Agnes AI 生成，支持8K高清国风纹样</p>
+                </div>
+            </div>
+            <!-- 右：生成结果 -->
+            <div class="card-heritage p-6 flex flex-col">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">生成结果</h2>
+                <div id="patternLoading" class="hidden flex flex-col items-center justify-center py-12">
+                    <div class="loading-spinner mb-4" style="width:40px;height:40px;border-width:4px;"></div>
+                    <p class="text-gray-500 text-sm">正在生成非遗纹样...</p>
+                    <p class="text-xs text-gray-400 mt-1">Agnes AI 创作中，请稍候</p>
+                </div>
+                <div id="patternPrompt" class="mb-4">
+                    <p class="text-sm text-gray-500 mb-2">生成提示词：</p>
+                    <div id="promptText" class="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 max-h-48 overflow-y-auto">等待生成...</div>
+                    <button onclick="copyPrompt()" class="mt-2 text-xs text-heritage-teal hover:underline">复制提示词</button>
+                </div>
+                <div id="patternResult" class="flex-1 min-h-[200px]">
+                    <div class="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+                        <p class="text-gray-400">生成的纹样图片将显示在此处</p>
+                    </div>
+                </div>
+                <div id="patternActions" class="hidden mt-4 flex space-x-3">
+                    <button onclick="generatePattern()" class="flex-1 btn-outline px-4 py-2 rounded-lg font-medium text-sm">重新生成</button>
+                    <button onclick="downloadAllImages()" class="flex-1 btn-heritage px-4 py-2 rounded-lg font-medium text-sm">全部下载</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== 页面3：文创内容生成 ====== -->
+        <div id="panel-content" class="tab-panel">
+            <!-- 左：配置 -->
+            <div class="card-heritage p-6">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">内容生成配置</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">选择模板</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button onclick="selectTemplate('导览解说')" class="template-btn selected p-4 border-2 rounded-lg text-left" data-template="导览解说">
+                                <p class="font-medium text-sm text-heritage-dark">景区线下导览解说</p>
+                                <p class="text-xs text-gray-500 mt-1">适用于景区、博物馆语音导览</p>
+                            </button>
+                            <button onclick="selectTemplate('短视频脚本')" class="template-btn p-4 border-2 rounded-lg text-left" data-template="短视频脚本">
+                                <p class="font-medium text-sm text-heritage-dark">非遗科普短视频脚本</p>
+                                <p class="text-xs text-gray-500 mt-1">适用于抖音、B站等短视频平台</p>
+                            </button>
+                            <button onclick="selectTemplate('宣传文案')" class="template-btn p-4 border-2 rounded-lg text-left" data-template="宣传文案">
+                                <p class="font-medium text-sm text-heritage-dark">文创商品宣传文案</p>
+                                <p class="text-xs text-gray-500 mt-1">适用于电商、文创产品推广</p>
+                            </button>
+                            <button onclick="selectTemplate('朋友圈文案')" class="template-btn p-4 border-2 rounded-lg text-left" data-template="朋友圈文案">
+                                <p class="font-medium text-sm text-heritage-dark">国风朋友圈文案</p>
+                                <p class="text-xs text-gray-500 mt-1">适用于社交媒体分享</p>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">非遗关键词</label>
+                        <input type="text" id="contentTopic" class="w-full p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre text-sm" placeholder="如：皮影戏、湘绣、木雕">
+                    </div>
+                    <div>
+                        <label class="block text-heritage-dark font-medium mb-2 text-sm">批量关键词（逗号分隔，可选）</label>
+                        <input type="text" id="contentBatch" class="w-full p-3 border-2 border-heritage-ochre/30 rounded-lg focus:border-heritage-ochre text-sm" placeholder="如：皮影戏,苏绣,剪纸">
+                    </div>
+                    <div class="flex space-x-3">
+                        <button onclick="generateContent()" class="flex-1 btn-heritage px-6 py-3 rounded-lg font-medium text-sm" id="btnGenContent">生成文案</button>
+                        <button onclick="generateToPattern()" class="flex-1 btn-outline px-6 py-3 rounded-lg font-medium text-sm">生成纹样图</button>
+                    </div>
+                </div>
+            </div>
+            <!-- 右：结果 -->
+            <div class="card-heritage p-6 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-serif font-bold text-heritage-dark text-lg">生成结果</h2>
+                    <div class="flex space-x-3">
+                        <button onclick="copyContent()" class="text-sm text-heritage-teal hover:underline">一键复制</button>
+                        <button onclick="downloadContent()" class="text-sm text-heritage-teal hover:underline">TXT下载</button>
+                        <button onclick="clearContent()" class="text-sm text-red-500 hover:underline">清空</button>
+                    </div>
+                </div>
+                <div id="contentLoading" class="hidden flex items-center justify-center py-12">
+                    <div class="loading-spinner mr-3"></div>
+                    <span class="text-gray-500">AI创作中...</span>
+                </div>
+                <div id="contentOutput" class="prose prose-sm max-w-none text-gray-700 flex-1 min-h-[150px] max-h-[600px] overflow-y-auto whitespace-pre-wrap">
+                    <p class="text-gray-400">选择模板并输入关键词后点击生成...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== 页面4：知识库管理 ====== -->
+        <div id="panel-kb" class="tab-panel">
+            <!-- 左：文档列表 + 上传 -->
+            <div class="card-heritage p-6 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-serif font-bold text-heritage-dark text-lg">知识库文档</h2>
+                    <div class="flex items-center gap-3">
+                        <select id="kbFilterCategory" class="px-3 py-1 text-sm border rounded-lg" onchange="filterDocuments()">
+                            <option value="">全部分类</option>
+                            <option value="皮影">皮影</option><option value="剪纸">剪纸</option><option value="苏绣">苏绣</option><option value="湘绣">湘绣</option><option value="木雕">木雕</option>
+                        </select>
+                        <button onclick="downloadTemplate()" class="text-sm text-heritage-teal hover:underline whitespace-nowrap">下载素材模板</button>
+                    </div>
+                </div>
+                <div id="kbDocList" class="space-y-3 flex-1 overflow-y-auto max-h-[300px]"></div>
+                <div id="uploadProgress" class="hidden mt-4 p-3 bg-blue-50 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="loading-spinner"></div>
+                        <span class="text-sm text-blue-700" id="uploadStatus">正在上传并切片...</span>
+                    </div>
+                    <div class="w-full bg-blue-200 rounded-full h-2 mt-2"><div id="uploadBar" class="bg-blue-600 h-2 rounded-full transition-all" style="width:30%"></div></div>
+                </div>
+                <div class="mt-4">
+                    <div id="dropZone" class="drop-zone">
+                        <svg class="w-10 h-10 mx-auto text-heritage-ochre/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        <p class="text-gray-600 mb-2">拖拽文件到此处或点击上传</p>
+                        <p class="text-xs text-gray-400">支持 TXT/MD 格式，最大 10MB</p>
+                        <input type="file" id="kbUpload" accept=".txt,.md" class="hidden" onchange="uploadFile()">
+                        <button onclick="document.getElementById('kbUpload').click()" class="mt-3 btn-heritage px-4 py-2 rounded-lg text-sm font-medium">选择文件</button>
+                    </div>
+                </div>
+            </div>
+            <!-- 右：数据统计 -->
+            <div class="card-heritage p-6">
+                <h2 class="font-serif font-bold text-heritage-dark text-lg mb-4">数据统计</h2>
+                <div class="space-y-4">
+                    <div class="stat-card bg-heritage-teal/10">
+                        <p class="text-sm text-gray-600">文档总数</p>
+                        <p id="statDocs" class="text-2xl font-bold text-heritage-teal">0</p>
+                    </div>
+                    <div class="stat-card bg-heritage-ochre/10">
+                        <p class="text-sm text-gray-600">工艺分类数</p>
+                        <p id="statCategories" class="text-2xl font-bold text-heritage-ochre">0</p>
+                    </div>
+                    <div class="stat-card bg-green-50">
+                        <p class="text-sm text-gray-600">总文本片段</p>
+                        <p id="statChunks" class="text-2xl font-bold text-green-600">0</p>
+                    </div>
+                    <div class="stat-card bg-purple-50">
+                        <p class="text-sm text-gray-600">向量存储占用</p>
+                        <p id="statStorage" class="text-2xl font-bold text-purple-600">0 KB</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部 -->
+    <footer class="py-6 border-t border-gray-200 bg-white/50">
+        <div class="max-w-7xl mx-auto px-6 text-center">
+            <p class="text-sm text-gray-600 mb-2">本项目使用以下开源组件：</p>
+            <p class="text-xs text-gray-500">FastAPI (MIT) | TailwindCSS (MIT) | Ollama (MIT) | DeepSeek-R1 (MIT) | 硅基流动DeepSeek (MIT) | GLM-4-Flash (Custom) | Agnes AI (Commercial)</p>
+            <p class="text-xs text-gray-400 mt-2">非遗分类加权检索算法、Token分层节流缓存系统、非遗风格强制校验过滤引擎 — 由项目负责人独立人工重构开发</p>
+        </div>
+    </footer>
+
+    <!-- ========== 模型切换弹窗 ========== -->
+    <div id="modelSwitchModal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-[520px] max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h3 class="font-serif font-bold text-heritage-dark text-lg mb-4">切换推理模型</h3>
+            <div class="space-y-3" id="modelOptions">
+                <!-- 1. 本地1.5B -->
+                <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 border-heritage-teal bg-heritage-teal/5">
+                    <input type="radio" name="model" value="local" class="mr-3 mt-1" checked>
+                    <div class="flex-1">
+                        <p class="font-medium text-heritage-dark">✅ 本地 DeepSeek 蒸馏轻量化模型</p>
+                        <p class="text-sm text-gray-500 mt-1">deepseek-r1:1.5b | 1.5B参数 | 4bit量化 | GPU CUDA加速</p>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">离线可用</span>
+                            <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">显存 ~1.5GB</span>
+                            <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">加载 <10秒</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">断网全功能可用，不消耗云端API额度，适合离线演示</p>
+                    </div>
+                </label>
+                <!-- 2. 硅基流动本地离线8B -->
+                <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="radio" name="model" value="siliconflow" class="mr-3 mt-1">
+                    <div class="flex-1">
+                        <p class="font-medium text-heritage-dark">✅ 硅基流动 DeepSeek-R1 本地离线8B模型</p>
+                        <p class="text-sm text-gray-500 mt-1">DeepSeek-R1-0528-Qwen3-8B | 强逻辑推理</p>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">离线可用</span>
+                            <span class="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">强推理能力</span>
+                            <span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded">8B参数</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">适合复杂非遗史料深度分析、交叉解读</p>
+                    </div>
+                </label>
+                <!-- 3. 智谱GLM-4-Flash -->
+                <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="radio" name="model" value="zhipu" class="mr-3 mt-1">
+                    <div class="flex-1">
+                        <p class="font-medium text-heritage-dark">智谱 GLM-4-Flash 云端免费模型</p>
+                        <p class="text-sm text-gray-500 mt-1">glm-4-flash | 128K上下文 | 永久免费API</p>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">依赖网络</span>
+                            <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">永久免费</span>
+                            <span class="px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs rounded">长文案效果佳</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">长文案生成效果更佳，适合文创内容批量生产</p>
+                    </div>
+                </label>
+                <!-- 4. DeepSeek-R1官方API - 已禁用，密钥未配置 -->
+                <label class="flex items-start p-4 border-2 rounded-lg cursor-not-allowed opacity-50 bg-gray-50">
+                    <input type="radio" name="model" value="deepseek-official" class="mr-3 mt-1" disabled>
+                    <div class="flex-1">
+                        <p class="font-medium text-gray-500">DeepSeek-R1 官方API模型（暂未开通）</p>
+                        <p class="text-sm text-gray-400 mt-1">deepseek-reasoner | 超大上下文高阶推理</p>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-xs rounded">依赖网络</span>
+                            <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-xs rounded">消耗API额度</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">该模型API密钥暂未配置，请联系管理员开通</p>
+                    </div>
+                </label>
+            </div>
+            <!-- 硬件监控 -->
+            <div id="hardwareMonitor" class="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p class="text-xs text-gray-600 font-medium mb-2">硬件资源监控</p>
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <p class="text-gray-500">内存</p>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-1"><div id="modalMemBar" class="bg-heritage-teal h-2 rounded-full" style="width:0%"></div></div>
+                        <p id="modalMemory" class="text-gray-600 mt-1">--</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-500">显存/GPU</p>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-1"><div id="modalGpuBar" class="bg-heritage-ochre h-2 rounded-full" style="width:0%"></div></div>
+                        <p id="modalGpu" class="text-gray-600 mt-1">--</p>
+                    </div>
+                </div>
+                <p id="cloudHint" class="hidden text-xs text-gray-400 mt-2">云端推理，不占用本机显卡</p>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+                <button onclick="hideModal('modelSwitchModal')" class="px-5 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm">取消</button>
+                <button onclick="confirmModelSwitch()" class="btn-heritage px-6 py-2 rounded-lg font-medium text-sm">确认切换</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 图片预览弹窗 ========== -->
+    <div id="imagePreviewModal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50" onclick="hideModal('imagePreviewModal')">
+        <div class="max-w-4xl max-h-[90vh] p-4">
+            <img id="previewImage" src="" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl">
+            <div class="flex justify-center space-x-4 mt-4">
+                <a id="downloadLink" href="" download class="px-4 py-2 bg-white text-gray-800 rounded-lg hover:bg-gray-100 text-sm">下载图片</a>
+                <button onclick="hideModal('imagePreviewModal')" class="px-4 py-2 bg-white text-gray-800 rounded-lg hover:bg-gray-100 text-sm">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 技术说明弹窗 ========== -->
+    <div id="techDocModal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-[640px] max-h-[80vh] overflow-y-auto shadow-2xl">
+            <h3 class="font-serif font-bold text-heritage-dark text-lg mb-4">项目技术说明</h3>
+            <div class="space-y-4 text-sm text-gray-700">
+                <div>
+                    <h4 class="font-bold text-heritage-ochre mb-2">四层推理架构</h4>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><b>本地 DeepSeek 蒸馏轻量化模型</b>：1.5B参数，4bit量化，GPU加速，断网可用</li>
+                        <li><b>硅基流动 DeepSeek-R1 本地离线8B模型</b>：强逻辑推理，适合复杂非遗史料深度分析</li>
+                        <li><b>智谱 GLM-4-Flash</b>：免费云端API，128K上下文，长文案效果佳</li>
+                        <li><b>DeepSeek-R1 官方API</b>：超大上下文高阶推理</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-bold text-heritage-ochre mb-2">AI生图能力</h4>
+                    <p>集成 Agnes AI 图像生成API，支持非遗纹样智能创作，8K高清输出。</p>
+                </div>
+                <div class="border-t pt-4">
+                    <h4 class="font-bold text-heritage-ochre mb-2">三大自研核心算法</h4>
+                    <div class="space-y-2">
+                        <div class="p-3 bg-heritage-teal/5 rounded-lg">
+                            <p class="font-medium text-heritage-dark">1. 非遗分类加权检索算法（rag_core.py）</p>
+                            <p class="text-gray-600 mt-1">根据非遗工艺品类进行加权相似度排序，结合文档时效性和用户查询偏好，提升检索精准度。</p>
+                        </div>
+                        <div class="p-3 bg-heritage-ochre/5 rounded-lg">
+                            <p class="font-medium text-heritage-dark">2. Token分层节流缓存系统（token_control.py）</p>
+                            <p class="text-gray-600 mt-1">实现分层截断策略，智能保留关键非遗术语；支持语义相似度缓存匹配，减少重复调用云端API。</p>
+                        </div>
+                        <div class="p-3 bg-green-50 rounded-lg">
+                            <p class="font-medium text-heritage-dark">3. 非遗风格强制校验过滤引擎（style_filter.py）</p>
+                            <p class="text-gray-600 mt-1">对纹样风格描述进行非遗文化规范校验，自动过滤畸形纹样、现代元素、水印文字，确保生成内容符合非遗美学。</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button onclick="hideModal('techDocModal')" class="px-5 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 操作指引弹窗 ========== -->
+    <div id="guideModal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-[500px] shadow-2xl">
+            <h3 class="font-serif font-bold text-heritage-dark text-lg mb-4">快速上手</h3>
+            <div class="space-y-4">
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 bg-heritage-ochre rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">1</div>
+                    <div><p class="font-medium text-sm">上传非遗知识库</p><p class="text-xs text-gray-500">在「知识库管理」页面拖拽上传TXT格式非遗资料</p></div>
+                </div>
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 bg-heritage-ochre rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">2</div>
+                    <div><p class="font-medium text-sm">智能问答 / 纹样AI生图 / 文创文案</p><p class="text-xs text-gray-500">选择对应功能模块进行非遗内容创作</p></div>
+                </div>
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 bg-heritage-ochre rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">3</div>
+                    <div><p class="font-medium text-sm">切换模型演示</p><p class="text-xs text-gray-500">点击右上角「切换模型」选择不同推理引擎</p></div>
+                </div>
+            </div>
+            <div class="flex justify-end mt-6">
+                <button onclick="hideModal('guideModal')" class="btn-heritage px-6 py-2 rounded-lg text-sm">开始使用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 查看片段弹窗 ========== -->
+    <div id="chunksModal" class="hidden fixed inset-0 modal-overlay flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-[600px] max-h-[80vh] overflow-y-auto shadow-2xl">
+            <h3 class="font-serif font-bold text-heritage-dark text-lg mb-4">文档片段</h3>
+            <div id="chunksContent" class="space-y-3 text-sm"></div>
+            <div class="flex justify-end mt-6">
+                <button onclick="hideModal('chunksModal')" class="px-5 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'chat';
+        let selectedTemplate = '导览解说';
+        let currentModel = 'local';
+        let generatedImages = [];
+        let tokenCount = 0;
+        let networkAvailable = true;
+        let lastContent = '';
+
+        // ============================================
+        // 初始化
+        // ============================================
+        window.onload = function() {
+            checkHealth();
+            checkNetwork();
+            loadKnowledgeBase();
+            selectTemplate('导览解说');
+            setupDragDrop();
+            setupSliders();
+            document.getElementById('chatInput')?.addEventListener('input', e => {
+                document.getElementById('charCount').textContent = e.target.value.length;
+            });
+            if (!localStorage.getItem('guideShown')) {
+                setTimeout(() => showModal('guideModal'), 800);
+                localStorage.setItem('guideShown', 'true');
+            }
+        };
+
+        function setupSliders() {
+            document.getElementById('paramCategoryWeight')?.addEventListener('input', e => {
+                document.getElementById('catWeightVal').textContent = e.target.value;
+            });
+            document.getElementById('paramThreshold')?.addEventListener('input', e => {
+                document.getElementById('thresholdVal').textContent = e.target.value;
+            });
+            document.getElementById('paramTopK')?.addEventListener('input', e => {
+                document.getElementById('topKVal').textContent = e.target.value;
+            });
+        }
+
+        // ============================================
+        // Toast
+        // ============================================
+        function showToast(msg, type='info') {
+            const d = document.createElement('div');
+            d.className = `toast toast-${type}`;
+            d.textContent = msg;
+            document.getElementById('toastContainer').appendChild(d);
+            setTimeout(() => d.remove(), 3000);
+        }
+
+        // ============================================
+        // Tab切换
+        // ============================================
+        function switchTab(tab) {
+            currentTab = tab;
+            ['chat','pattern','content','kb'].forEach(t => {
+                const tabBtn = document.getElementById(`tab-${t}`);
+                const panel = document.getElementById(`panel-${t}`);
+                if (t === tab) {
+                    tabBtn.className = 'px-5 py-2 rounded-lg font-medium tab-active transition-all text-sm';
+                    panel.className = 'tab-panel active';
+                } else {
+                    tabBtn.className = 'px-5 py-2 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 transition-all text-sm';
+                    panel.className = 'tab-panel';
+                }
+            });
+            if (tab === 'kb') loadKnowledgeBase();
+        }
+
+        // ============================================
+        // 弹窗控制
+        // ============================================
+        function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function hideModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function toggleDropdown() { document.getElementById('dropdownMenu').classList.toggle('hidden'); }
+        function hideDropdown() { document.getElementById('dropdownMenu').classList.add('hidden'); }
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.relative')) document.getElementById('dropdownMenu')?.classList.add('hidden');
+        });
+
+        // ============================================
+        // 网络检测
+        // ============================================
+        async function checkNetwork() {
+            try {
+                const r = await fetch('/api/network/check');
+                const data = await r.json();
+                networkAvailable = data.available;
+                document.getElementById('networkWarning').className = data.available ? 'network-warning hidden' : 'network-warning';
+                updateCloudFeatures();
+                return data.available;
+            } catch { return true; }
+        }
+
+        function updateCloudFeatures() {
+            // 不禁用按钮，只在切换到云端模型且断网时提示
+        }
+
+        // ============================================
+        // 健康检测
+        // ============================================
+        async function checkHealth() {
+            try {
+                const resp = await fetch('/api/model/health');
+                const health = await resp.json();
+                const dot = document.getElementById('modelStatusDot');
+                if (!health.ollama_running) {
+                    dot.className = 'w-2 h-2 rounded-full bg-red-500';
+                    document.getElementById('currentModel').textContent = 'Ollama未启动';
+                } else if (!health.model_available) {
+                    dot.className = 'w-2 h-2 rounded-full bg-yellow-500';
+                    document.getElementById('currentModel').textContent = '模型未就绪';
+                } else {
+                    dot.className = 'w-2 h-2 rounded-full bg-green-500';
+                    document.getElementById('currentModel').textContent = '本地 DeepSeek 蒸馏轻量模型';
+                }
+            } catch(e) { console.error('健康检测失败:', e); }
+        }
+
+        // ============================================
+        // 模型切换
+        // ============================================
+        function showModelSwitch() {
+            showModal('modelSwitchModal');
+            fetch('/api/memory').then(r=>r.json()).then(data => {
+                document.getElementById('modalMemory').textContent = `${data.percent}% (${data.used_gb}/${data.total_gb} GB)`;
+                document.getElementById('modalMemBar').style.width = data.percent + '%';
+            });
+            document.getElementById('modalGpu').textContent = '--';
+            document.getElementById('modalGpuBar').style.width = '0%';
+            document.querySelector(`input[name="model"][value="${currentModel}"]`).checked = true;
+            updateMonitorForModel(currentModel);
+        }
+
+        function updateMonitorForModel(source) {
+            const isCloud = ['zhipu','siliconflow','deepseek-official'].includes(source);
+            const hint = document.getElementById('cloudHint');
+            const gpuBar = document.getElementById('modalGpuBar');
+            if (isCloud) {
+                hint.classList.remove('hidden');
+                gpuBar.style.width = '0%';
+                document.getElementById('modalGpu').textContent = '云端推理';
+            } else {
+                hint.classList.add('hidden');
+            }
+        }
+
+        document.querySelectorAll('input[name="model"]').forEach(r => {
+            r.addEventListener('change', e => updateMonitorForModel(e.target.value));
+        });
+
+        async function confirmModelSwitch() {
+            const selected = document.querySelector('input[name="model"]:checked');
+            if (!selected || selected.disabled) {
+                showToast('该模型暂不可用', 'error');
+                return;
+            }
+            const source = selected.value;
+            if (['zhipu','siliconflow'].includes(source) && !networkAvailable) {
+                showToast('网络不可用，无法切换到云端模型', 'error');
+                return;
+            }
+            try {
+                const r = await fetch(`/api/model/switch?source=${source}`, { method: 'POST' });
+                const data = await r.json();
+                if (r.ok) {
+                    currentModel = source;
+                    const names = { 'local':'本地 DeepSeek 蒸馏轻量模型', 'zhipu':'智谱 GLM-4-Flash', 'siliconflow':'硅基流动 DeepSeek-R1', 'deepseek-official':'DeepSeek-R1 官方API' };
+                    document.getElementById('currentModel').textContent = names[source] || source;
+                    const isLocal = source === 'local';
+                    document.getElementById('tokenNote').className = isLocal ? 'text-xs text-green-600 ml-1' : 'text-xs text-green-600 ml-1 hidden';
+                    hideModal('modelSwitchModal');
+                    showToast(`已切换至${names[source]}`, 'success');
+                } else {
+                    showToast(data.detail || '切换失败', 'error');
+                }
+            } catch(e) { showToast('切换失败: ' + e.message, 'error'); }
+        }
+
+        // ============================================
+        // 智能问答
+        // ============================================
+        async function sendChat() {
+            const query = document.getElementById('chatInput').value.trim();
+            if (!query) { showToast('请输入问题', 'error'); return; }
+            if (query.length > 800) { showToast('输入不能超过800字', 'error'); return; }
+
+            const topK = parseInt(document.getElementById('paramTopK')?.value || 5);
+            const threshold = parseFloat(document.getElementById('paramThreshold')?.value || 0.1);
+
+            document.getElementById('chatLoading').classList.remove('hidden');
+            document.getElementById('chatOutput').innerHTML = '';
+            document.getElementById('chatSources').classList.add('hidden');
+            document.getElementById('chatNoResult').classList.add('hidden');
+            document.getElementById('btnSendChat').disabled = true;
+
+            try {
+                const resp = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, similarity_threshold: threshold, top_k: topK, provider: currentModel === 'local' ? null : currentModel })
+                });
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let fullText = '';
+                let meta = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data.includes('[DONE]')) {
+                                try { meta = JSON.parse(data.replace('[DONE]', '')); } catch {}
+                            } else if (data.includes('[ERROR]')) {
+                                fullText += '\n\n' + data.replace('[ERROR]', '');
+                            } else {
+                                fullText += data;
+                                const clean = fullText.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/?think>/g, '').trim();
+                                document.getElementById('chatOutput').innerHTML = (clean || fullText).replace(/\n/g, '<br>');
+                            }
+                        }
+                    }
+                }
+
+                document.getElementById('chatLoading').classList.add('hidden');
+                document.getElementById('btnSendChat').disabled = false;
+
+                if (meta) {
+                    tokenCount += meta.token_count || 0;
+                    document.getElementById('tokenCount').textContent = tokenCount;
+                    if (meta.sources && meta.sources.length > 0) {
+                        document.getElementById('chatSources').classList.remove('hidden');
+                        document.getElementById('sourcesList').innerHTML = meta.sources.map(s =>
+                            `<p>📄 ${s.filename} (${s.category}) - 相似度: ${s.similarity}</p>`
+                        ).join('');
+                    } else {
+                        document.getElementById('chatNoResult').classList.remove('hidden');
+                    }
+                }
+            } catch(e) {
+                document.getElementById('chatLoading').classList.add('hidden');
+                document.getElementById('btnSendChat').disabled = false;
+                document.getElementById('chatOutput').innerHTML = `<p class="text-red-500">请求失败: ${e.message}</p>`;
+            }
+        }
+
+        // ============================================
+        // 纹样生成
+        // ============================================
+        function applyStylePreset() {
+            const preset = document.getElementById('patternStylePreset').value;
+            if (preset === 'custom') {
+                document.getElementById('patternStyle').value = '';
+                document.getElementById('patternStyle').focus();
+            } else if (preset) {
+                document.getElementById('patternStyle').value = preset;
+            }
+        }
+
+        async function generatePattern() {
+            const category = document.getElementById('patternCategory').value;
+            const style = document.getElementById('patternStyle').value.trim();
+            const size = document.getElementById('patternSize').value;
+            if (!style) { showToast('请输入风格描述', 'error'); return; }
+
+            document.getElementById('patternLoading').classList.remove('hidden');
+            document.getElementById('patternPrompt').innerHTML = '<p class="text-sm text-gray-500">生成中...</p>';
+            document.getElementById('patternResult').innerHTML = '';
+            document.getElementById('patternActions').classList.add('hidden');
+
+            try {
+                const promptResp = await fetch('/api/pattern/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category, style_description: style })
+                });
+                const promptData = await promptResp.json();
+                const prompt = promptData.prompt || style;
+
+                const lines = prompt.split(/\d+\.\s*/).filter(Boolean).map((item, i) => {
+                    const parts = item.trim().split('\n').filter(l => l.trim());
+                    return `<div class="mb-2 pb-2 border-b border-gray-100 last:border-0"><p class="font-medium text-heritage-dark text-sm">${i+1}. ${parts[0] || ''}</p>${parts.length > 1 ? `<p class="text-gray-600 mt-1 text-xs">${parts.slice(1).join(' ')}</p>` : ''}</div>`;
+                }).join('');
+
+                document.getElementById('patternPrompt').innerHTML = `<div class="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 max-h-48 overflow-y-auto">${lines}</div><button onclick="copyPrompt()" class="mt-2 text-xs text-heritage-teal hover:underline">复制提示词</button>`;
+
+                const imgResp = await fetch('/api/agnes/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, category, size })
+                });
+                const imgData = await imgResp.json();
+                document.getElementById('patternLoading').classList.add('hidden');
+
+                if (imgData.success && imgData.urls && imgData.urls.length > 0) {
+                    generatedImages = imgData.urls;
+                    document.getElementById('patternResult').innerHTML = imgData.urls.map(url => `
+                        <div class="pattern-card">
+                            <img src="${url}" class="w-full rounded-lg cursor-pointer" onclick="previewImage('${url}')">
+                            <div class="overlay">
+                                <button onclick="event.stopPropagation();previewImage('${url}')" class="p-1.5 bg-white/90 rounded text-xs shadow">放大</button>
+                                <a href="${url}" download onclick="event.stopPropagation()" class="p-1.5 bg-white/90 rounded text-xs shadow">下载</a>
+                            </div>
+                        </div>
+                    `).join('');
+                    document.getElementById('patternActions').classList.remove('hidden');
+                    showToast('纹样生成成功！', 'success');
+                } else {
+                    document.getElementById('patternResult').innerHTML = `<div class="flex items-center justify-center h-64 bg-red-50 rounded-lg"><p class="text-red-500 text-sm">${imgData.message || '生图失败'}</p></div>`;
+                }
+            } catch(e) {
+                document.getElementById('patternLoading').classList.add('hidden');
+                document.getElementById('patternResult').innerHTML = `<div class="flex items-center justify-center h-64 bg-red-50 rounded-lg"><p class="text-red-500 text-sm">生图失败: ${e.message}</p></div>`;
+            }
+        }
+
+        function previewImage(url) {
+            document.getElementById('previewImage').src = url;
+            document.getElementById('downloadLink').href = url;
+            showModal('imagePreviewModal');
+        }
+
+        function copyPrompt() {
+            const text = document.getElementById('promptText')?.innerText || '';
+            navigator.clipboard.writeText(text);
+            showToast('提示词已复制', 'success');
+        }
+
+        function downloadAllImages() {
+            generatedImages.forEach((url, i) => {
+                const a = document.createElement('a');
+                a.href = url; a.download = `非遗纹样_${Date.now()}_${i+1}.png`; a.click();
+            });
+            showToast('开始下载', 'success');
+        }
+
+        // ============================================
+        // 文创内容生成
+        // ============================================
+        function selectTemplate(template) {
+            selectedTemplate = template;
+            document.querySelectorAll('.template-btn').forEach(btn => {
+                btn.className = btn.dataset.template === template
+                    ? 'template-btn selected p-4 border-2 rounded-lg text-left'
+                    : 'template-btn p-4 border-2 rounded-lg text-left hover:border-heritage-ochre transition-all';
+            });
+        }
+
+        async function generateContent() {
+            const topic = document.getElementById('contentTopic').value.trim();
+            const batch = document.getElementById('contentBatch').value.trim();
+            if (!topic && !batch) { showToast('请输入非遗关键词', 'error'); return; }
+
+            document.getElementById('contentLoading').classList.remove('hidden');
+            document.getElementById('contentOutput').innerHTML = '';
+            document.getElementById('btnGenContent').disabled = true;
+
+            try {
+                const topics = batch ? batch.split(',').map(s=>s.trim()).filter(Boolean) : [topic];
+                let all = '';
+                for (const t of topics) {
+                    const resp = await fetch('/api/content/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ template_type: selectedTemplate, topic: t, provider: currentModel === 'local' ? null : currentModel })
+                    });
+                    const data = await resp.json();
+                    all += `【${selectedTemplate} - ${t}】\n${data.content}\n\n${'='.repeat(40)}\n\n`;
+                    tokenCount += data.token_count || 0;
+                }
+                lastContent = all;
+                document.getElementById('tokenCount').textContent = tokenCount;
+                document.getElementById('contentOutput').innerHTML = all.replace(/\n/g, '<br>');
+                document.getElementById('contentLoading').classList.add('hidden');
+                document.getElementById('btnGenContent').disabled = false;
+                showToast('文案生成成功！', 'success');
+            } catch(e) {
+                document.getElementById('contentLoading').classList.add('hidden');
+                document.getElementById('btnGenContent').disabled = false;
+                document.getElementById('contentOutput').innerHTML = `<p class="text-red-500">生成失败: ${e.message}</p>`;
+            }
+        }
+
+        function generateToPattern() {
+            const topic = document.getElementById('contentTopic').value.trim();
+            if (!topic) { showToast('请先输入非遗关键词', 'error'); return; }
+            document.getElementById('patternStyle').value = topic;
+            document.getElementById('patternStylePreset').value = 'custom';
+            switchTab('pattern');
+        }
+
+        function copyContent() {
+            const text = document.getElementById('contentOutput').innerText;
+            navigator.clipboard.writeText(text);
+            showToast('内容已复制', 'success');
+        }
+
+        function downloadContent() {
+            const text = document.getElementById('contentOutput').innerText;
+            if (!text || text.includes('选择模板')) { showToast('暂无内容可下载', 'error'); return; }
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+            const topic = document.getElementById('contentTopic').value || '非遗';
+            a.download = `${selectedTemplate}-${topic}-${dateStr}.txt`;
+            a.click();
+            showToast('下载成功', 'success');
+        }
+
+        function clearContent() {
+            document.getElementById('contentOutput').innerHTML = '<p class="text-gray-400">选择模板并输入关键词后点击生成...</p>';
+        }
+
+        // ============================================
+        // 知识库管理
+        // ============================================
+        async function loadKnowledgeBase() {
+            try {
+                const resp = await fetch('/api/knowledge/status');
+                const data = await resp.json();
+                document.getElementById('statDocs').textContent = data.total_documents;
+                document.getElementById('statCategories').textContent = data.categories?.length || 0;
+                document.getElementById('statChunks').textContent = data.total_chunks;
+                document.getElementById('statStorage').textContent = Math.round(data.total_chunks * 2.5) + ' KB';
+
+                const list = document.getElementById('kbDocList');
+                if (data.documents && data.documents.length > 0) {
+                    list.innerHTML = data.documents.map(doc => `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                            <div class="flex-1">
+                                <p class="font-medium text-sm">${doc.filename}</p>
+                                <p class="text-xs text-gray-500">分类: ${(doc.category || []).join(', ')} | 片段: ${doc.chunk_count}</p>
+                            </div>
+                            <div class="flex items-center space-x-2 flex-shrink-0 ml-2">
+                                <button onclick="viewChunks('${doc.doc_id}')" class="text-xs text-heritage-teal hover:underline">查看片段</button>
+                                <button onclick="deleteDocument('${doc.doc_id}')" class="text-xs text-red-500 hover:text-red-700">删除</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    list.innerHTML = '<p class="text-gray-400 text-center py-8 text-sm">暂无文档，请上传非遗知识库文件</p>';
+                }
+            } catch(e) { console.error('加载知识库失败:', e); }
+        }
+
+        function filterDocuments() {
+            const cat = document.getElementById('kbFilterCategory').value;
+            document.querySelectorAll('#kbDocList > div').forEach(el => {
+                const text = el.textContent;
+                el.style.display = (!cat || text.includes(cat)) ? '' : 'none';
+            });
+        }
+
+        async function viewChunks(docId) {
+            try {
+                const resp = await fetch(`/api/knowledge/${docId}/chunks`);
+                const data = await resp.json();
+                const el = document.getElementById('chunksContent');
+                if (data.chunks && data.chunks.length > 0) {
+                    el.innerHTML = data.chunks.map(c => `
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <div class="flex justify-between text-xs text-gray-500 mb-1">
+                                <span>片段 #${c.chunk_index + 1}</span>
+                                <span>分类: ${c.category}</span>
+                            </div>
+                            <p class="text-sm text-gray-700">${c.content}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    el.innerHTML = '<p class="text-gray-400 text-center">暂无片段</p>';
+                }
+                showModal('chunksModal');
+            } catch(e) { showToast('加载片段失败', 'error'); }
+        }
+
+        function setupDragDrop() {
+            const dz = document.getElementById('dropZone');
+            if (!dz) return;
+            ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+            ['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+            dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) uploadFileDirect(e.dataTransfer.files[0]); });
+        }
+
+        async function uploadFile() {
+            const file = document.getElementById('kbUpload').files[0];
+            if (file) uploadFileDirect(file);
+        }
+
+        async function uploadFileDirect(file) {
+            if (!file.name.endsWith('.txt') && !file.name.endsWith('.md')) {
+                showToast('仅支持TXT/MD格式', 'error'); return;
+            }
+            const prog = document.getElementById('uploadProgress');
+            prog.classList.remove('hidden');
+            document.getElementById('uploadStatus').textContent = '正在上传...';
+            document.getElementById('uploadBar').style.width = '20%';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                document.getElementById('uploadStatus').textContent = '正在切片与向量化入库...';
+                document.getElementById('uploadBar').style.width = '60%';
+                const resp = await fetch('/api/knowledge/upload', { method: 'POST', body: formData });
+                const data = await resp.json();
+                document.getElementById('uploadBar').style.width = '100%';
+                if (resp.ok) {
+                    document.getElementById('uploadStatus').textContent = `上传成功！已切分为 ${data.chunks} 个片段`;
+                    showToast(`上传成功！已切分为 ${data.chunks} 个片段`, 'success');
+                    loadKnowledgeBase();
+                } else {
+                    document.getElementById('uploadStatus').textContent = data.detail || '上传失败';
+                    showToast(data.detail || '上传失败', 'error');
+                }
+            } catch(e) {
+                showToast('上传失败: ' + e.message, 'error');
+            }
+            setTimeout(() => prog.classList.add('hidden'), 2000);
+            document.getElementById('kbUpload').value = '';
+        }
+
+        async function deleteDocument(docId) {
+            if (!confirm('确定删除此文档？')) return;
+            try {
+                await fetch(`/api/knowledge/${docId}`, { method: 'DELETE' });
+                showToast('删除成功', 'success');
+                loadKnowledgeBase();
+            } catch(e) { showToast('删除失败', 'error'); }
+        }
+
+        function downloadTemplate() {
+            const tpl = `# 非遗知识库标准模板\n\n## 皮影戏\n皮影戏是中国民间古老的传统艺术...\n\n## 剪纸艺术\n剪纸是中国民间流行的一种历史悠久的镂空艺术...\n\n## 苏绣\n苏绣是苏州地区手工艺品的代表...\n`;
+            const blob = new Blob([tpl], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '非遗知识库模板.txt';
+            a.click();
+            showToast('模板下载成功', 'success');
+        }
+
+        // ============================================
+        // 日志导出
+        // ============================================
+        async function exportLogs() {
+            try {
+                const resp = await fetch('/api/logs');
+                const data = await resp.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                const now = new Date();
+                a.download = `platform-logs-${now.getFullYear()}${now.getMonth()+1}${now.getDate()}.json`;
+                a.click();
+                showToast('日志导出成功', 'success');
+            } catch(e) { showToast('导出失败', 'error'); }
+        }
+    </script>
+</body>
+</html>

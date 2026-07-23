@@ -1,0 +1,34 @@
+# 项目基础依赖清单 - 地域非遗文脉RAG智能创作平台
+# 支持离线本地 pip install -r requirements.txt 安装
+
+# Web服务框架
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.9
+
+# 环境配置
+python-dotenv==1.0.1
+
+# RAG核心链路
+langchain==0.3.1
+langchain-community==0.3.1
+langchain-ollama==0.3.0
+
+# 向量数据库
+chromadb==0.5.5
+
+# 文本处理
+tiktoken==0.7.0
+
+# HTTP请求（讯飞星火API调用）
+httpx==0.27.2
+requests==2.32.3
+
+# 日志工具
+loguru==0.7.2
+
+# 文本切片工具
+sentencepiece==0.2.0
+
+# 本地大模型管理
+ollama==0.3.3

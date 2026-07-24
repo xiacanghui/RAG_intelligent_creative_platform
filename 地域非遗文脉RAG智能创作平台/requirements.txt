@@ -25,5 +25,8 @@ requests==2.32.3
 # 日志工具
 loguru==0.7.2
 
+# 系统工具
+psutil==5.9.8
+
 # 文本切片工具
 sentencepiece==0.2.0

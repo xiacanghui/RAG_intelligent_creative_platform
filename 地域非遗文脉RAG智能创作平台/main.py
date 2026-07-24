@@ -4,6 +4,7 @@
 非遗分类加权检索算法、Token分层节流缓存系统、非遗风格强制校验过滤引擎三大核心业务算法模块由项目负责人独立人工重构开发
 """
 import os
+os.environ["ONNX_DISABLE_GPU"] = "1"
 import sys
 import json
 import time

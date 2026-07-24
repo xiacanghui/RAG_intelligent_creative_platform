@@ -378,4 +378,4 @@ if __name__ == "__main__":
     import uvicorn
     host = os.getenv("FASTAPI_HOST", "0.0.0.0")
     port = int(os.getenv("FASTAPI_PORT", "8000"))
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("main:app", host=host, port=port, reload=False)

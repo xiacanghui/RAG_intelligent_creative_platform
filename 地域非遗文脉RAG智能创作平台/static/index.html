@@ -37,6 +37,13 @@
         .tab-active { background: linear-gradient(135deg, #C75C2C 0%, #D4A843 100%); color: white; }
         .tab-panel { display: none; }
         .tab-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 768px) {
+            .tab-panel.active { grid-template-columns: 1fr; gap: 16px; }
+            #chatOutput { max-height: none !important; min-height: 80px; }
+            .header-model-info { display: none !important; }
+            .header-title h1 { font-size: 0.875rem !important; }
+            .header-title p { display: none !important; }
+        }
         .loading-spinner { border: 3px solid #f3f3f3; border-top: 3px solid #C75C2C; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: 500; z-index: 9999; animation: fadeInOut 3s ease-in-out; }
@@ -61,7 +68,6 @@
         .pattern-card .overlay { position: absolute; top: 0; right: 0; padding: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.3s; }
         .pattern-card:hover .overlay { opacity: 1; }
         .stat-card { padding: 12px; border-radius: 10px; }
-        @media (max-width: 1024px) { .tab-panel.active { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body class="min-h-screen">
@@ -71,7 +77,7 @@
     <!-- 顶部导航栏 -->
     <header class="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-3 header-title">
                 <div class="w-10 h-10 bg-gradient-to-br from-heritage-ochre to-heritage-gold rounded-full flex items-center justify-center shadow-lg">
                     <span class="text-white font-serif font-bold text-lg">遗</span>
                 </div>
@@ -80,7 +86,7 @@
                     <p class="text-xs text-gray-500">非物质文化遗产智能创作辅助系统 · 四层推理架构</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-4 header-model-info">
                 <div class="flex items-center space-x-2 text-sm">
                     <span class="text-gray-500">当前模型：</span>
                     <span id="currentModel" class="font-medium text-heritage-teal">本地 DeepSeek 蒸馏轻量模型</span>

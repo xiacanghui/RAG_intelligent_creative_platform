@@ -232,7 +232,6 @@ async def agnes_generate_image(request: ImageGenRequest):
 
     import requests as req
     try:
-        w, h = request.size.split("x")
         r = req.post(
             "https://apihub.agnes-ai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {agnes_key}", "Content-Type": "application/json"},
@@ -244,6 +243,10 @@ async def agnes_generate_image(request: ImageGenRequest):
             },
             timeout=120,
         )
+        if r.status_code == 503:
+            return {"success": False, "message": "Agnes服务繁忙，请稍后重试", "urls": []}
+        if "text/html" in r.headers.get("content-type", ""):
+            return {"success": False, "message": f"Agnes返回错误页面(HTTP {r.status_code})，请稍后重试", "urls": []}
         data = r.json()
         if r.status_code == 200 and data.get("data"):
             urls = [item.get("url", "") for item in data["data"] if item.get("url")]
@@ -253,8 +256,10 @@ async def agnes_generate_image(request: ImageGenRequest):
         else:
             msg = data.get("error", {}).get("message", "") if isinstance(data.get("error"), dict) else str(data)
             return {"success": False, "message": f"生图失败: {msg[:200]}", "urls": []}
+    except req.exceptions.Timeout:
+        return {"success": False, "message": "Agnes请求超时(120s)，服务可能繁忙，请稍后重试", "urls": []}
     except Exception as e:
-        return {"success": False, "message": str(e), "urls": []}
+        return {"success": False, "message": str(e)[:200], "urls": []}
 
 # ============================================
 # 文创内容生成

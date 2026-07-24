@@ -8,6 +8,7 @@
 import os
 import json
 import uuid
+import math
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -19,12 +20,12 @@ load_dotenv()
 # 配置
 # ============================================
 KNOWLEDGE_BASE_DIR = Path(os.getenv("KNOWLEDGE_BASE_DIR", "./knowledge_base"))
-CHROMA_PERSIST_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./vector_store"))
-CHUNK_SIZE = 500  # 文本切片大小（字）
+VECTOR_STORE_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./vector_store"))
+CHUNK_SIZE = 500
 
 
 class SimpleChineseEmbedding:
-    """简单中文字符级嵌入函数，无需下载模型"""
+    """简单中文字符级嵌入函数"""
 
     def name(self) -> str:
         return "simple_chinese_hash"
@@ -33,6 +34,8 @@ class SimpleChineseEmbedding:
         return [self._embed_one(text) for text in input]
 
     def embed_query(self, input):
+        if isinstance(input, str):
+            return [self._embed_one(input)]
         return [self._embed_one(text) for text in input]
 
     def _embed_one(self, text):
@@ -44,61 +47,149 @@ class SimpleChineseEmbedding:
         return [v / total for v in vec]
 
 
+class SimpleVectorStore:
+    """基于numpy的简易向量存储，替代ChromaDB"""
+
+    def __init__(self, persist_dir: str):
+        self.persist_dir = Path(persist_dir)
+        self.persist_dir.mkdir(exist_ok=True)
+        self._store_file = self.persist_dir / "vectors.json"
+        self.documents = []
+        self.embeddings = []
+        self.ids = []
+        self.metadatas = []
+        self._load()
+
+    def _load(self):
+        if self._store_file.exists():
+            try:
+                with open(self._store_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.documents = data.get("documents", [])
+                self.embeddings = data.get("embeddings", [])
+                self.ids = data.get("ids", [])
+                self.metadatas = data.get("metadatas", [])
+            except (json.JSONDecodeError, IOError):
+                pass
+
+    def _save(self):
+        try:
+            with open(self._store_file, "w", encoding="utf-8") as f:
+                json.dump({
+                    "documents": self.documents,
+                    "embeddings": self.embeddings,
+                    "ids": self.ids,
+                    "metadatas": self.metadatas
+                }, f, ensure_ascii=False)
+        except IOError as e:
+            print(f"[RAG] 向量存储保存失败: {e}")
+
+    def add(self, documents, ids, metadatas, embeddings):
+        self.documents.extend(documents)
+        self.ids.extend(ids)
+        self.metadatas.extend(metadatas)
+        self.embeddings.extend(embeddings)
+        self._save()
+
+    def query(self, query_embedding, n_results=3):
+        if not self.embeddings:
+            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+        query_vec = query_embedding[0]
+        similarities = []
+        for i, emb in enumerate(self.embeddings):
+            sim = self._cosine_similarity(query_vec, emb)
+            similarities.append((sim, i))
+
+        similarities.sort(key=lambda x: x[0], reverse=True)
+        top_n = similarities[:n_results]
+
+        result_ids = [[self.ids[idx] for _, idx in top_n]]
+        result_docs = [[self.documents[idx] for _, idx in top_n]]
+        result_metas = [[self.metadatas[idx] for _, idx in top_n]]
+        result_dists = [[1.0 - sim for sim, idx in top_n]]
+
+        return {
+            "ids": result_ids,
+            "documents": result_docs,
+            "metadatas": result_metas,
+            "distances": result_dists
+        }
+
+    def get(self, where=None):
+        if not where:
+            return {"ids": self.ids, "documents": self.documents, "metadatas": self.metadatas}
+
+        matched_ids = []
+        matched_docs = []
+        matched_metas = []
+
+        for i, meta in enumerate(self.metadatas):
+            match = True
+            for key, value in where.items():
+                if meta.get(key) != value:
+                    match = False
+                    break
+            if match:
+                matched_ids.append(self.ids[i])
+                matched_docs.append(self.documents[i])
+                matched_metas.append(self.metadatas[i])
+
+        return {"ids": matched_ids, "documents": matched_docs, "metadatas": matched_metas}
+
+    def delete(self, ids):
+        id_set = set(ids)
+        new_indices = [i for i, id_ in enumerate(self.ids) if id_ not in id_set]
+        self.ids = [self.ids[i] for i in new_indices]
+        self.documents = [self.documents[i] for i in new_indices]
+        self.metadatas = [self.metadatas[i] for i in new_indices]
+        self.embeddings = [self.embeddings[i] for i in new_indices]
+        self._save()
+
+    def count(self):
+        return len(self.ids)
+
+    @staticmethod
+    def _cosine_similarity(a, b):
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+
 class RAGCore:
     """RAG检索核心类"""
 
     def __init__(self, chroma_persist_dir: str, knowledge_base_dir: str):
-        self.chroma_persist_dir = Path(chroma_persist_dir)
+        self.vector_store_dir = Path(chroma_persist_dir)
         self.knowledge_base_dir = Path(knowledge_base_dir)
-        self.chroma_persist_dir.mkdir(exist_ok=True)
+        self.vector_store_dir.mkdir(exist_ok=True)
         self.knowledge_base_dir.mkdir(exist_ok=True)
 
         self.vector_store = None
-        self.embeddings = None
+        self.embedding_fn = SimpleChineseEmbedding()
         self.model_controller = None
-        self.documents = []  # 文档元数据存储
+        self.documents = []
 
-        # 文档元数据文件
-        self._metadata_file = self.chroma_persist_dir / "documents_metadata.json"
+        self._metadata_file = self.vector_store_dir / "documents_metadata.json"
 
     def initialize(self):
         """初始化RAG核心组件"""
         try:
-            import chromadb
-            from chromadb.config import Settings
+            self.vector_store = SimpleVectorStore(str(self.vector_store_dir))
 
-            # 初始化ChromaDB（不使用默认ONNX嵌入，避免下载79MB模型）
-            self.vector_store = chromadb.PersistentClient(
-                path=str(self.chroma_persist_dir),
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-            )
-
-            # 使用自定义嵌入函数（无需下载ONNX模型）
-            self.embedding_fn = SimpleChineseEmbedding()
-            self.collection = self.vector_store.get_or_create_collection(
-                name="nonheritage_knowledge",
-                metadata={"hnsw:space": "cosine"},
-                embedding_function=self.embedding_fn
-            )
-
-            # 加载文档元数据
             self._load_metadata()
-
-            # 扫描知识库目录，加载新文档
             self._scan_and_load_documents()
 
-            print(f"[RAG] 初始化完成，当前向量库文档数: {self.collection.count()}")
+            print(f"[RAG] 初始化完成，当前向量库文档数: {self.vector_store.count()}")
 
-        except ImportError as e:
-            print(f"[RAG] 依赖缺失: {e}")
-            print("[RAG] 请运行: pip install chromadb")
+        except Exception as e:
+            print(f"[RAG] 初始化失败: {e}")
             raise
 
     def _load_metadata(self):
-        """加载文档元数据"""
         if self._metadata_file.exists():
             try:
                 with open(self._metadata_file, "r", encoding="utf-8") as f:
@@ -109,7 +200,6 @@ class RAGCore:
             self.documents = []
 
     def _save_metadata(self):
-        """保存文档元数据"""
         try:
             with open(self._metadata_file, "w", encoding="utf-8") as f:
                 json.dump(self.documents, f, ensure_ascii=False, indent=2)
@@ -117,7 +207,6 @@ class RAGCore:
             print(f"[RAG] 元数据保存失败: {e}")
 
     def _scan_and_load_documents(self):
-        """扫描知识库目录并加载新文档"""
         txt_files = list(self.knowledge_base_dir.glob("*.txt"))
         loaded_ids = {doc["doc_id"] for doc in self.documents}
 
@@ -132,30 +221,24 @@ class RAGCore:
                     print(f"[RAG] 文档加载失败 {txt_file.name}: {e}")
 
     def _chunk_text(self, text: str) -> List[str]:
-        """文本智能切片"""
         chunks = []
         paragraphs = text.split("\n\n")
-
         current_chunk = ""
         for para in paragraphs:
             para = para.strip()
             if not para:
                 continue
-
             if len(current_chunk) + len(para) + 1 <= CHUNK_SIZE:
                 current_chunk = current_chunk + "\n" + para if current_chunk else para
             else:
                 if current_chunk:
                     chunks.append(current_chunk)
                 current_chunk = para
-
         if current_chunk:
             chunks.append(current_chunk)
-
         return chunks if chunks else [text[:CHUNK_SIZE]]
 
     def _detect_category(self, text: str) -> List[str]:
-        """检测非遗工艺分类标签"""
         categories = {
             "皮影": ["皮影", "皮影戏", "影子戏", "驴皮", "雕刻", "操纵"],
             "竹编": ["竹编", "竹艺", "竹器", "编织", "竹篾", "竹丝"],
@@ -165,24 +248,22 @@ class RAGCore:
             "湘绣": ["湘绣", "湖南刺绣", "丝线", "绣花", "针法"],
             "苏绣": ["苏绣", "苏州刺绣", "双面绣", "丝线", "精细"],
         }
-
         detected = []
         for cat, keywords in categories.items():
             if any(kw in text for kw in keywords):
                 detected.append(cat)
-
         return detected if detected else ["通用"]
 
     def add_document(self, content: str, filename: str) -> str:
-        """添加文档到向量库"""
         doc_id = str(uuid.uuid4())[:8]
         chunks = self._chunk_text(content)
 
         for i, chunk in enumerate(chunks):
             chunk_id = f"{doc_id}_chunk_{i}"
             category = self._detect_category(chunk)
+            embedding = self.embedding_fn([chunk])[0]
 
-            self.collection.add(
+            self.vector_store.add(
                 documents=[chunk],
                 ids=[chunk_id],
                 metadatas=[{
@@ -191,10 +272,10 @@ class RAGCore:
                     "chunk_index": i,
                     "category": ",".join(category),
                     "added_at": datetime.now().isoformat()
-                }]
+                }],
+                embeddings=[embedding]
             )
 
-        # 保存文档元数据
         self.documents.append({
             "doc_id": doc_id,
             "filename": filename,
@@ -203,21 +284,14 @@ class RAGCore:
             "added_at": datetime.now().isoformat()
         })
         self._save_metadata()
-
         return doc_id
 
     def delete_document(self, doc_id: str) -> bool:
-        """从向量库删除文档"""
         try:
-            # 查找并删除所有相关chunk
-            results = self.collection.get(
-                where={"doc_id": doc_id}
-            )
+            results = self.vector_store.get(where={"doc_id": doc_id})
+            if results["ids"]:
+                self.vector_store.delete(ids=results["ids"])
 
-            if results and results["ids"]:
-                self.collection.delete(ids=results["ids"])
-
-                # 删除知识库文件
                 for doc in self.documents:
                     if doc["doc_id"] == doc_id:
                         file_path = self.knowledge_base_dir / doc["filename"]
@@ -225,30 +299,23 @@ class RAGCore:
                             file_path.unlink()
                         break
 
-                # 更新元数据
                 self.documents = [d for d in self.documents if d["doc_id"] != doc_id]
                 self._save_metadata()
                 return True
-
             return False
         except Exception as e:
             print(f"[RAG] 文档删除失败: {e}")
             return False
 
     def query(self, query: str, model_source: str = "local") -> Dict[str, Any]:
-        """RAG查询接口"""
-        # 1. 查询向量化
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=5
-        )
+        query_embedding = self.embedding_fn.embed_query([query])
+        results = self.vector_store.query(query_embedding, n_results=5)
 
-        # 2. 提取检索结果
         sources = []
         category_tags = set()
         context_docs = []
 
-        if results and results["documents"]:
+        if results["documents"] and results["documents"][0]:
             for i, doc in enumerate(results["documents"][0]):
                 metadata = results["metadatas"][0][i] if results["metadatas"] else {}
                 sources.append({
@@ -260,10 +327,8 @@ class RAGCore:
                 for cat in metadata.get("category", "通用").split(","):
                     category_tags.add(cat)
 
-        # 3. 构建RAG上下文
         context = "\n\n".join(context_docs) if context_docs else "暂无相关非遗资料"
 
-        # 4. 调用大模型生成回答
         system_prompt = """你是一个专业的非遗文化知识助手。请基于提供的非遗资料回答用户问题。
 回答要求：
 1. 内容准确、详实
@@ -282,12 +347,6 @@ class RAGCore:
 请基于参考资料给出详细回答："""
 
         try:
-            # 【人工重构区：非遗加权排序算法】
-            # TODO: 由项目负责人实现非遗分类加权相似度排序算法
-            # 当前为基础实现，直接使用向量相似度结果
-            sorted_results = self._basic_similarity_sort(results)
-
-            # 调用模型生成回答
             if self.model_controller is None:
                 from model_switch import ModelSwitchController
                 self.model_controller = ModelSwitchController()
@@ -315,40 +374,10 @@ class RAGCore:
                 "token_count": 0
             }
 
-    def _basic_similarity_sort(self, results: Dict) -> List[Dict]:
-        """基础相似度排序（供人工重构区参考）
-
-        【人工重构区：非遗加权排序算法】
-        本函数为临时实现，由项目负责人重构为非遗分类加权相似度排序算法
-
-        重构方向建议：
-        1. 根据非遗工艺品类权重进行加权排序
-        2. 考虑文档时效性（新增文档权重更高）
-        3. 考虑用户历史查询偏好
-        4. 引入非遗专业度评分机制
-        """
-        if not results or not results.get("documents"):
-            return []
-
-        sorted_items = []
-        for i, doc in enumerate(results["documents"][0]):
-            metadata = results["metadatas"][0][i] if results["metadatas"] else {}
-            distance = results["distances"][0][i] if results.get("distances") else 0
-
-            sorted_items.append({
-                "content": doc,
-                "metadata": metadata,
-                "similarity": 1 - distance  # 转换为相似度
-            })
-
-        # 基础排序：按相似度降序
-        sorted_items.sort(key=lambda x: x["similarity"], reverse=True)
-        return sorted_items
-
     def generate_pattern_prompt(self, category: str, style_description: str) -> str:
         """生成传统纹样AI绘图提示词（纯英文，适配Agnes AI）"""
         category_features = {
-            "皮影": "Chinese shadow puppet art, intricate hand-carved leather silhouette, translucent warm-toned material, traditional opera character造型, delicate openwork carving patterns, jointed movable figure, dramatic light projection effect",
+            "皮影": "Chinese shadow puppet art, intricate hand-carved leather silhouette, translucent warm-toned material, traditional opera character shape, delicate openwork carving patterns, jointed movable figure, dramatic light projection effect",
             "竹编": "Chinese bamboo weaving art, interlaced warp and weft structure, natural bamboo color tones, geometric pattern arrangement, handwoven textile texture, fine bamboo strip fiber details",
             "年画": "Chinese New Year woodblock print, vibrant multi-color registration, auspicious door god figure, festive celebratory atmosphere, symmetrical composition, woodcut carving texture and grain",
             "剪纸": "Chinese paper cutting art, bold red color palette, precise scissor-cut openwork technique, symmetric folk pattern design, window flower motifs, auspicious symbolic imagery, red paper texture",
@@ -428,12 +457,10 @@ class RAGCore:
             }
 
     def get_knowledge_base_status(self) -> Dict[str, Any]:
-        """获取知识库状态"""
         categories = set()
         for doc in self.documents:
             for cat in doc.get("category", []):
                 categories.add(cat)
-
         return {
             "total_documents": len(self.documents),
             "categories": list(categories),
@@ -441,10 +468,4 @@ class RAGCore:
         }
 
     def save(self):
-        """保存向量库状态"""
-        if self.vector_store:
-            try:
-                # ChromaDB PersistentClient 自动持久化
-                print("[RAG] 向量库状态已保存")
-            except Exception as e:
-                print(f"[RAG] 保存失败: {e}")
+        print("[RAG] 向量库状态已保存")

@@ -1,5 +1,5 @@
 # 项目基础依赖清单 - 地域非遗文脉RAG智能创作平台
-# Render部署版本（不含本地Ollama依赖）
+# Render部署版本（使用numpy替代chromadb，避免onnxruntime兼容性问题）
 
 # Web服务框架
 fastapi==0.115.0
@@ -13,10 +13,8 @@ python-dotenv==1.0.1
 langchain==0.3.1
 langchain-community==0.3.1
 
-# 向量数据库
-chromadb==0.5.5
-
-# 文本处理（使用简单的字符计数替代tiktoken）
+# 向量计算
+numpy==1.26.4
 
 # HTTP请求
 httpx==0.27.2
@@ -27,6 +25,3 @@ loguru==0.7.2
 
 # 系统工具
 psutil==5.9.8
-
-# 文本切片工具
-sentencepiece==0.2.0

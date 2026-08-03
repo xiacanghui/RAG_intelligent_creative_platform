@@ -39,10 +39,10 @@ MODEL_CONFIGS = {
         "tags": ["离线可用", "GPU加速", "轻量"],
     },
     "zhipu": {
-        "name": "智谱 GLM-4-Flash 云端免费模型",
-        "short": "GLM-4-Flash",
+        "name": "智谱 GLM-4.7-Flash 云端免费模型",
+        "short": "GLM-4.7-Flash",
         "source_type": "cloud",
-        "tags": ["依赖网络", "永久免费", "长文案"],
+        "tags": ["依赖网络", "永久免费", "普惠模型"],
     },
 }
 
@@ -128,7 +128,7 @@ class ModelSwitchController:
         r = requests.post(
             "https://open.bigmodel.cn/api/paas/v4/chat/completions",
             headers={"Authorization": f"Bearer {ZHIPU_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "glm-4-flash", "messages": messages, "temperature": 0.7},
+            json={"model": "glm-4.7-flash", "messages": messages, "temperature": 0.7},
             timeout=120,
         )
         elapsed = time.time() - start

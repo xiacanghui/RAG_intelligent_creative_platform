@@ -362,7 +362,7 @@
     <footer class="py-6 border-t border-gray-200 bg-white/50">
         <div class="max-w-7xl mx-auto px-6 text-center">
             <p class="text-sm text-gray-600 mb-2">本项目使用以下开源组件：</p>
-            <p class="text-xs text-gray-500">FastAPI (MIT) | TailwindCSS (MIT) | Ollama (MIT) | DeepSeek-R1 (MIT) | 硅基流动DeepSeek (MIT) | GLM-4-Flash (Custom) | Agnes AI (Commercial)</p>
+                <p class="text-xs text-gray-500">FastAPI (MIT) | TailwindCSS (MIT) | Ollama (MIT) | DeepSeek-R1 (MIT) | GLM-4-Flash (Custom) | Agnes AI (Commercial)</p>
             <p class="text-xs text-gray-400 mt-2">非遗分类加权检索算法、Token分层节流缓存系统、非遗风格强制校验过滤引擎 — 由项目负责人独立人工重构开发</p>
         </div>
     </footer>
@@ -386,21 +386,7 @@
                         <p class="text-xs text-gray-400 mt-1">断网全功能可用，不消耗云端API额度，适合离线演示</p>
                     </div>
                 </label>
-                <!-- 2. 硅基流动本地离线8B -->
-                <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input type="radio" name="model" value="siliconflow" class="mr-3 mt-1">
-                    <div class="flex-1">
-                        <p class="font-medium text-heritage-dark">✅ 硅基流动 DeepSeek-R1 本地离线8B模型</p>
-                        <p class="text-sm text-gray-500 mt-1">DeepSeek-R1-0528-Qwen3-8B | 强逻辑推理</p>
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">离线可用</span>
-                            <span class="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded">强推理能力</span>
-                            <span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded">8B参数</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-1">适合复杂非遗史料深度分析、交叉解读</p>
-                    </div>
-                </label>
-                <!-- 3. 智谱GLM-4-Flash -->
+                <!-- 2. 智谱GLM-4-Flash -->
                 <label class="flex items-start p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
                     <input type="radio" name="model" value="zhipu" class="mr-3 mt-1">
                     <div class="flex-1">
@@ -412,19 +398,6 @@
                             <span class="px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs rounded">长文案效果佳</span>
                         </div>
                         <p class="text-xs text-gray-400 mt-1">长文案生成效果更佳，适合文创内容批量生产</p>
-                    </div>
-                </label>
-                <!-- 4. DeepSeek-R1官方API - 已禁用，密钥未配置 -->
-                <label class="flex items-start p-4 border-2 rounded-lg cursor-not-allowed opacity-50 bg-gray-50">
-                    <input type="radio" name="model" value="deepseek-official" class="mr-3 mt-1" disabled>
-                    <div class="flex-1">
-                        <p class="font-medium text-gray-500">DeepSeek-R1 官方API模型（暂未开通）</p>
-                        <p class="text-sm text-gray-400 mt-1">deepseek-reasoner | 超大上下文高阶推理</p>
-                        <div class="flex flex-wrap gap-2 mt-2">
-                            <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-xs rounded">依赖网络</span>
-                            <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-xs rounded">消耗API额度</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-1">该模型API密钥暂未配置，请联系管理员开通</p>
                     </div>
                 </label>
             </div>
@@ -469,12 +442,10 @@
             <h3 class="font-serif font-bold text-heritage-dark text-lg mb-4">项目技术说明</h3>
             <div class="space-y-4 text-sm text-gray-700">
                 <div>
-                    <h4 class="font-bold text-heritage-ochre mb-2">四层推理架构</h4>
+                    <h4 class="font-bold text-heritage-ochre mb-2">双模型推理架构</h4>
                     <ul class="list-disc list-inside space-y-1">
                         <li><b>本地 DeepSeek 蒸馏轻量化模型</b>：1.5B参数，4bit量化，GPU加速，断网可用</li>
-                        <li><b>硅基流动 DeepSeek-R1 本地离线8B模型</b>：强逻辑推理，适合复杂非遗史料深度分析</li>
                         <li><b>智谱 GLM-4-Flash</b>：免费云端API，128K上下文，长文案效果佳</li>
-                        <li><b>DeepSeek-R1 官方API</b>：超大上下文高阶推理</li>
                     </ul>
                 </div>
                 <div>
@@ -699,7 +670,7 @@
                 return;
             }
             const source = selected.value;
-            if (['zhipu','siliconflow'].includes(source) && !networkAvailable) {
+            if (source === 'zhipu' && !networkAvailable) {
                 showToast('网络不可用，无法切换到云端模型', 'error');
                 return;
             }
@@ -708,7 +679,7 @@
                 const data = await r.json();
                 if (r.ok) {
                     currentModel = source;
-                    const names = { 'local':'本地 DeepSeek 蒸馏轻量模型', 'zhipu':'智谱 GLM-4-Flash', 'siliconflow':'硅基流动 DeepSeek-R1', 'deepseek-official':'DeepSeek-R1 官方API' };
+                    const names = { 'local':'本地 DeepSeek 蒸馏轻量模型', 'zhipu':'智谱 GLM-4-Flash' };
                     document.getElementById('currentModel').textContent = names[source] || source;
                     const isLocal = source === 'local';
                     document.getElementById('tokenNote').className = isLocal ? 'text-xs text-green-600 ml-1' : 'text-xs text-green-600 ml-1 hidden';

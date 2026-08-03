@@ -1,14 +1,11 @@
 """
-地域非遗文脉RAG智能创作平台 - 四模型调度控制器
+地域非遗文脉RAG智能创作平台 - 双模型调度控制器
 基础工程代码由 Vibe Coding 智能体生成
 非遗分类加权检索算法、Token分层节流缓存系统、非遗风格强制校验过滤引擎三大核心业务算法模块由项目负责人独立人工重构开发
 
 调度架构：
   本地DeepSeek蒸馏轻量化模型 (Ollama) → http://localhost:11434
-  本地DeepSeek-R1离线8B模型 (SiliconFlow本地) → 备用
   智谱GLM-4-Flash云端免费模型 → https://open.bigmodel.cn/api/paas/v4
-  DeepSeek-R1云端API模型 → https://api.deepseek.com/v1
-  硅基流动DeepSeek-R1云端 → https://api.siliconflow.cn/v1
 """
 import os
 import time
@@ -27,8 +24,6 @@ load_dotenv()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "deepseek-r1:1.5b")
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
-SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 LOG_DIR = Path(os.getenv("LOG_DIR", "./logs"))
 
 LOG_DIR.mkdir(exist_ok=True)
@@ -49,23 +44,11 @@ MODEL_CONFIGS = {
         "source_type": "cloud",
         "tags": ["依赖网络", "永久免费", "长文案"],
     },
-    "siliconflow": {
-        "name": "硅基流动 DeepSeek-R1 云端模型",
-        "short": "DeepSeek-R1 8B",
-        "source_type": "cloud",
-        "tags": ["依赖网络", "强推理", "8B参数"],
-    },
-    "deepseek-official": {
-        "name": "DeepSeek-R1 官方API模型",
-        "short": "DeepSeek-R1 官方",
-        "source_type": "cloud",
-        "tags": ["依赖网络", "消耗API额度", "超大上下文"],
-    },
 }
 
 
 class ModelSwitchController:
-    """四模型调度控制器"""
+    """双模型调度控制器"""
 
     def __init__(self):
         self.current_source = "local"
@@ -163,72 +146,6 @@ class ModelSwitchController:
         return {"response": content, "token_count": tokens, "model": "glm-4-flash", "elapsed": elapsed}
 
     # ============================================
-    # 硅基流动 DeepSeek-R1 调用
-    # ============================================
-    def _call_siliconflow(self, prompt: str, system_prompt: str = "") -> Dict[str, Any]:
-        if not SILICONFLOW_API_KEY:
-            raise Exception("硅基流动API密钥未配置")
-
-        start = time.time()
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        r = requests.post(
-            "https://api.siliconflow.cn/v1/chat/completions",
-            headers={"Authorization": f"Bearer {SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B", "messages": messages, "temperature": 0.7, "max_tokens": 4096},
-            timeout=120,
-        )
-        elapsed = time.time() - start
-
-        if r.status_code != 200:
-            raise Exception(f"硅基流动API错误: {r.status_code} {r.text[:200]}")
-
-        data = r.json()
-        content = data["choices"][0]["message"]["content"]
-        tokens = data.get("usage", {}).get("total_tokens", 0)
-        self._log_event("call", {
-            "source": "siliconflow", "model": "DeepSeek-R1-8B",
-            "token_count": tokens, "elapsed": round(elapsed, 2), "success": True,
-        })
-        return {"response": content, "token_count": tokens, "model": "DeepSeek-R1-8B", "elapsed": elapsed}
-
-    # ============================================
-    # DeepSeek 官方 API 调用
-    # ============================================
-    def _call_deepseek_official(self, prompt: str, system_prompt: str = "") -> Dict[str, Any]:
-        if not DEEPSEEK_API_KEY:
-            raise Exception("DeepSeek官方API密钥未配置，请联系管理员")
-
-        start = time.time()
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        r = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "deepseek-reasoner", "messages": messages, "max_tokens": 4096},
-            timeout=120,
-        )
-        elapsed = time.time() - start
-
-        if r.status_code != 200:
-            raise Exception(f"DeepSeek官方API错误: {r.status_code} {r.text[:200]}")
-
-        data = r.json()
-        content = data["choices"][0]["message"]["content"]
-        tokens = data.get("usage", {}).get("total_tokens", 0)
-        self._log_event("call", {
-            "source": "deepseek-official", "model": "deepseek-reasoner",
-            "token_count": tokens, "elapsed": round(elapsed, 2), "success": True,
-        })
-        return {"response": content, "token_count": tokens, "model": "deepseek-reasoner", "elapsed": elapsed}
-
-    # ============================================
     # 统一生成接口
     # ============================================
     def generate(self, prompt: str, system_prompt: str = "", force_source: Optional[str] = None) -> Dict[str, Any]:
@@ -237,8 +154,6 @@ class ModelSwitchController:
         dispatch = {
             "local": self._call_ollama,
             "zhipu": self._call_zhipu,
-            "siliconflow": self._call_siliconflow,
-            "deepseek-official": self._call_deepseek_official,
         }
 
         if source in dispatch:
